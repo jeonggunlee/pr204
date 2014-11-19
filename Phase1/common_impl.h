@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/types.h>
-#include <sys/stat.h>
 #include <sys/wait.h>
 #include <sys/ioctl.h>
 #include <errno.h>
@@ -16,9 +15,9 @@
 
 /* definition du type des infos */
 /* de connexion des processus dsm */
-struct dsm_proc_conn  {
+struct dsm_proc_conn
+{
    int rank;
-   char *name;
    /* a completer */
 };
 
@@ -26,10 +25,13 @@ typedef struct dsm_proc_conn dsm_proc_conn_t;
 
 /* definition du type des infos */
 /* d'identification des processus dsm */
-struct dsm_proc {   
-  pid_t pid;
-  dsm_proc_conn_t connect_info;
+struct dsm_proc
+{   
+	pid_t pid;
+	char * name;
+	dsm_proc_conn_t connect_info;
 };
+
 typedef struct dsm_proc dsm_proc_t;
 
 int creer_socket(int type, int *port_num);
