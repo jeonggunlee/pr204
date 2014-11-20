@@ -8,6 +8,14 @@
 #include <string.h>
 #include <fcntl.h>
 #include <assert.h>
+#include <resolv.h>
+#include <sys/select.h>
+#include <arpa/inet.h>    
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <sys/time.h> 
+#include <netdb.h>
 
 /* autres includes (eventuellement) */
 
@@ -27,6 +35,7 @@ typedef struct dsm_proc_conn dsm_proc_conn_t;
 /* d'identification des processus dsm */
 struct dsm_proc
 {   
+	int rank;
 	pid_t pid;
 	char * name;
 	dsm_proc_conn_t connect_info;
