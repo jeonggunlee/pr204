@@ -39,3 +39,5 @@ struct dsm_proc
 typedef struct dsm_proc dsm_proc_t;
 
 int creer_socket(int type, int *port_num);
+
+void error(const char *msg);

@@ -28,37 +28,37 @@ void sigchld_handler(int sig)
 	 /* pour eviter les zombies */
 }
 
-int do_socket(int domain, int type, int protocol)
-{
-	int yes = 1;
+// int do_socket(int domain, int type, int protocol)
+// {
+// 	int yes = 1;
 
-	//create the socket
-	int fd = socket(domain, type, protocol);
+// 	//create the socket
+// 	int fd = socket(domain, type, protocol);
 
-	//check for socket validity
-	if (fd == -1)
-		error("Socket error");
+// 	//check for socket validity
+// 	if (fd == -1)
+// 		error("Socket error");
 
-	//set socket option, to prevent "already in use" issue when rebooting the server right on
-	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1)
-		error("Error setting socket options");
+// 	//set socket option, to prevent "already in use" issue when rebooting the server right on
+// 	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1)
+// 		error("Error setting socket options");
 	
-	return fd;
-}
+// 	return fd;
+// }
 
-void init_serv_addr(struct sockaddr_in * server_addr, int port)
-{
-    memset(server_addr, 0, sizeof(*server_addr));
-    server_addr->sin_port = htons(port);
-    server_addr->sin_family = AF_INET;
-    server_addr->sin_addr.s_addr = INADDR_ANY;
-}
+// void init_serv_addr(struct sockaddr_in * server_addr, int port)
+// {
+//     memset(server_addr, 0, sizeof(*server_addr));
+//     server_addr->sin_port = htons(port);
+//     server_addr->sin_family = AF_INET;
+//     server_addr->sin_addr.s_addr = INADDR_ANY;
+// }
 
-void do_bind(int sock, struct sockaddr_in addr)
-{
-    if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) == -1)
-        error("Bind error");
-}
+// void do_bind(int sock, struct sockaddr_in addr)
+// {
+//     if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) == -1)
+//         error("Bind error");
+// }
 
 int do_accept(int sock, struct sockaddr * client_addr, socklen_t * client_size)
 {
@@ -126,6 +126,7 @@ int main(int argc, char *argv[])
 		int (*fd1)[2];
 		int (*fd2)[2];
 		int i;
+		int port = 33000;
 		int struct_size = sizeof(struct sockaddr_in);
 
 		int sock;
@@ -138,8 +139,8 @@ int main(int argc, char *argv[])
 		dsm_proc_t * machine;
 		int * client_sock;
 		 
-		 /* Mise en place d'un traitant pour recuperer les fils zombies */      
-		 /* XXX.sa_handler = sigchld_handler; */
+		/* Mise en place d'un traitant pour recuperer les fils zombies */      
+		/* XXX.sa_handler = sigchld_handler; */
 		 
 		/* lecture du fichier de machines */
 		fd = open(argv[1], O_RDONLY);
@@ -168,9 +169,12 @@ int main(int argc, char *argv[])
 		}
 		 
 		/* creation de la socket d'ecoute */
-		sock = do_socket(AF_INET, SOCK_STREAM, 0);
-		init_serv_addr(&server_addr, 33000);
-		do_bind(sock, server_addr);
+		// sock = do_socket(AF_INET, SOCK_STREAM, 0);
+		// init_serv_addr(&server_addr, 33000);
+		// do_bind(sock, server_addr);
+		
+		sock = creer_socket(SOCK_STREAM, &port);
+
 		/* + ecoute effective */
 		listen(sock, num_procs);
 
