@@ -1,6 +1,6 @@
 #include "common_impl.h"
 
-int main(int argc, char **argv)
+int main(int argc, char ** argv)
 {   
    /* processus intermediaire pour "nettoyer" */
    /* la liste des arguments qu'on va passer */

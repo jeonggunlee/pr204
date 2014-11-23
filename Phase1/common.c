@@ -1,6 +1,6 @@
 #include "common_impl.h"
 
-int creer_socket(int prop, int *port_num) 
+int creer_socket(int prop, int * port_num) 
 {
 	int fd = 0;
    
