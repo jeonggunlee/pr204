@@ -1,35 +1,55 @@
 #include "common_impl.h"
 
-int creer_socket(int prop, int * port_num) 
-{
-	int fd = 0;
+int init_socket(int type)
+{	
+	int fd;
 	int yes = 1;
-	struct sockaddr_in server_addr;
+	/* creation de la socket */
+	fd = socket(AF_INET, type, 0);
 
-	/* fonction de creation et d'attachement */
-	/* d'une nouvelle socket */
-	/* renvoie le numero de descripteur */
-	/* et modifie le parametre port_num */
-
-	/* do_socket() */
-	fd = socket(AF_INET, prop, 0);
+	/* verification de la validite de la socket */
 	if (fd == -1)
-		error("Socket error");
+		ERROR_EXIT("Socket error");
 
+	/* socket option pour le probleme "already in use" */
 	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1)
-		error("Error setting socket options");
-
-	/* init_serv_addr() */
-	memset(&server_addr, 0, sizeof(server_addr));
-	server_addr.sin_family = AF_INET;
-	server_addr.sin_port = ntohs(*port_num);
-	server_addr.sin_addr.s_addr = INADDR_ANY;
-
-	/* do_bind() */
-	if (bind(fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1)
-        error("Bind error");
+		ERROR_EXIT("Error setting socket options");
 
 	return fd;
+}
+
+int creer_socket(int type, int * port_num) 
+{
+	int fd = init_socket(type);
+	struct sockaddr_in server_addr;
+
+	/* initialisation du serveur */
+    memset(&server_addr, 0, sizeof(struct sockaddr_in));
+    server_addr.sin_port = htons(*port_num);
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+	
+    /* attachement de la nouvelle socket */
+	while(bind(fd, (struct sockaddr *)&server_addr, sizeof(struct sockaddr_in)) == -1)
+	{
+		/* autre erreur que le port */
+		if (errno != EADDRINUSE)
+			ERROR_EXIT("Bind error");
+
+		/* attribution d'un nouveau port */
+		(*port_num)++;
+		server_addr.sin_port = htons(*port_num);
+	}
+
+	return fd;
+}
+
+void * arguments(int fd, const char * type)
+{
+	proc_args_t * args = malloc(4 + sizeof(int));
+	args->fd = fd;
+	args->type = type;
+	return args;
 }
 
 /* Vous pouvez ecrire ici toutes les fonctions */

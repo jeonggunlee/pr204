@@ -1,5 +1,9 @@
 # PR204 #
 
+## 1.3.0 ##
+* Lecture de STDOUT et STDERR par threads
+* Ajout d'arguments pour le SSH
+
 ## 1.2.1 ##
 * Déplacement de do_socket(), init_serv_addr() et do_bind() dans creer_socket()
 

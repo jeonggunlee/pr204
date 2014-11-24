@@ -7,11 +7,11 @@ OPTFLAGS     = -O0
 
 SHELL = /bin/sh
 
-CFLAGS  =   -DREENTRANT -Wunused -Wall -g 
+CFLAGS  =   -DREENTRANT -Wunused -Wall -g
 CCFLAGS = $(CFLAGS)
 LIBS =  -lpthread
 
-EXECS = common.o dsmexec dsmwrap truc 
+EXECS = common.o dsmexec dsmwrap truc
 
 default: $(EXECS)
 
@@ -22,7 +22,7 @@ dsmexec: dsmexec.o common.o
 dsmwrap: dsmwrap.o common.o
 	$(CLINKER) $(OPTFLAGS) -o dsmwrap dsmwrap.o  common.o $(LIBS)
 	mv dsmwrap ./bin
-		
+
 truc: truc.o 
 	$(CLINKER) $(OPTFLAGS) -o truc truc.o common.o $(LIBS)	
 	mv truc ./bin

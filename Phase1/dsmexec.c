@@ -4,7 +4,7 @@
 
 /* un tableau gerant les infos d'identification */
 /* des processus dsm */
-dsm_proc_t *proc_array = NULL; 
+dsm_proc_t * proc_array = NULL; 
 
 /* le nombre de processus effectivement crees */
 volatile int num_procs_creat = 0;
@@ -16,77 +16,38 @@ void usage(void)
 	exit(EXIT_FAILURE);
 }
 
-void error(const char *msg)
-{
-    perror(msg);
-    exit(1);
-}
-
 void sigchld_handler(int sig)
 {
 	 /* on traite les fils qui se terminent */
 	 /* pour eviter les zombies */
 }
 
-// int do_socket(int domain, int type, int protocol)
-// {
-// 	int yes = 1;
-
-// 	//create the socket
-// 	int fd = socket(domain, type, protocol);
-
-// 	//check for socket validity
-// 	if (fd == -1)
-// 		error("Socket error");
-
-// 	//set socket option, to prevent "already in use" issue when rebooting the server right on
-// 	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1)
-// 		error("Error setting socket options");
-	
-// 	return fd;
-// }
-
-// void init_serv_addr(struct sockaddr_in * server_addr, int port)
-// {
-//     memset(server_addr, 0, sizeof(*server_addr));
-//     server_addr->sin_port = htons(port);
-//     server_addr->sin_family = AF_INET;
-//     server_addr->sin_addr.s_addr = INADDR_ANY;
-// }
-
-// void do_bind(int sock, struct sockaddr_in addr)
-// {
-//     if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) == -1)
-//         error("Bind error");
-// }
-
 int do_accept(int sock, struct sockaddr * client_addr, socklen_t * client_size)
 {
     int fd;
     fd = accept(sock, client_addr, client_size);
     if (fd == -1)
-        error("Accept error");
+        ERROR_EXIT("Accept error");
     return fd;
 }
 
-char * read_line(int fd)
+ssize_t read_fd(int fd, char * buf)
 {
 	int i = 0;
-	char * d = malloc(64);
 	char c;
 
-	memset(d, 0, 64);
+	memset(buf, 0, LENGTH);
 
 	while (1)
 	{
-		if ((read(fd, &c, 1) == 0)||(c == '\n'))
+		if ((read(fd, &c, 1) == 0)||(c == '\n')||(i == LENGTH))
 			break;
 
-		d[i] = c;
+		buf[i] = c;
 		i++;
 	}
 
-	return d;
+	return i;
 }
 
 int count_lines(int fd)
@@ -111,7 +72,43 @@ int count_lines(int fd)
 	return count;
 }
 
-int main(int argc, char *argv[])
+void * proc_display(void * arguments)
+{
+	int n;
+	int fd;
+	const char * type;
+	char buf[LENGTH];
+	char buffer[LENGTH];
+
+	proc_args_t * args = arguments;
+
+	fd = args->fd;
+	type = args->type;
+
+	while(1)
+	{
+		memset(buf, 0, LENGTH);
+		n = read_fd(fd, buf);
+
+		if (n > 0)
+		{
+			memset(buffer, 0, LENGTH);
+			sprintf(buffer, "[%s] %s\n", type, buf);
+			fflush(stdout);
+			write(STDOUT_FILENO, buffer, strlen(buffer));
+			fflush(stdout);
+		}
+		else
+		{
+			/* economie de ressources */
+			usleep(500);
+		}
+	}
+
+	pthread_exit(NULL);
+}
+
+int main(int argc, char ** argv)
 {
 
 	if (argc < 3)
@@ -123,24 +120,22 @@ int main(int argc, char *argv[])
 		pid_t pid;
 		int fd;
 		int num_procs;
+		int port;
 		int (*fd1)[2];
 		int (*fd2)[2];
-		int i;
-		int port = 33000;
+		int i, j;
 		int struct_size = sizeof(struct sockaddr_in);
 
 		int sock;
-		struct sockaddr_in server_addr;
 		struct sockaddr_in client_addr;
-		char * arg_exec[3];
-		char buf[LENGTH];
-		char buffer[LENGTH];
+		char * arg_exec[argc + 3];
 
 		dsm_proc_t * machine;
 		int * client_sock;
+		pthread_t * thread;
 		 
-		/* Mise en place d'un traitant pour recuperer les fils zombies */      
-		/* XXX.sa_handler = sigchld_handler; */
+		 /* Mise en place d'un traitant pour recuperer les fils zombies */      
+		 /* XXX.sa_handler = sigchld_handler; */
 		 
 		/* lecture du fichier de machines */
 		fd = open(argv[1], O_RDONLY);
@@ -158,10 +153,8 @@ int main(int argc, char *argv[])
 			for (i = 0; i < num_procs; ++i)
 			{
 				machine[i].rank = i;
-				machine[i].name = read_line(fd);
+				read_fd(fd, machine[i].name);
 			}
-
-			close(fd);
 		}
 		else
 		{
@@ -169,10 +162,7 @@ int main(int argc, char *argv[])
 		}
 		 
 		/* creation de la socket d'ecoute */
-		// sock = do_socket(AF_INET, SOCK_STREAM, 0);
-		// init_serv_addr(&server_addr, 33000);
-		// do_bind(sock, server_addr);
-		
+		port = 1024;
 		sock = creer_socket(SOCK_STREAM, &port);
 
 		/* + ecoute effective */
@@ -182,7 +172,7 @@ int main(int argc, char *argv[])
 		fd1 = malloc(2 * num_procs * sizeof(int));
 		fd2 = malloc(2 * num_procs * sizeof(int));
 
-		/* Allocation de la mémoire pour les sockets clients */
+		/* Allocation de la mémoire pour le tableau de socks d'initialisation */
 		client_sock = malloc(num_procs * sizeof(int));
 
 		/* creation des fils */
@@ -201,7 +191,6 @@ int main(int argc, char *argv[])
 			
 			if (pid == 0)
 			{ /* fils */
-
 				/* redirection stdout */
 				close(fd1[i][0]);
 				close(STDOUT_FILENO);
@@ -214,18 +203,30 @@ int main(int argc, char *argv[])
 				dup(fd2[i][1]);
 				close(fd2[i][1]);
 
-				/* Récupération du PID du fils */
+				/* Recuperation du PID du fils */
 				machine[i].pid = getpid();
 
-				execlp("echo", "echo", "coucou benJ!", NULL);
-
 				/* Creation du tableau d'arguments pour le ssh */
-				strcpy(arg_exec[0], "ssh");
+				arg_exec[0] = "ssh";
 				arg_exec[1] = machine[i].name;
-				arg_exec[2] = NULL;
+				arg_exec[2] = "./dsmwrap";
+
+				/* Introduction des arguments */
+				for (j = 3; j < argc+1; j++)
+				{
+					arg_exec[j] = argv[j-1];
+				}
+
+				/* Introduction des arguments utiles mais non lances sur ssh */
+				/* 1 - port */
+				arg_exec[argc+1] = malloc(5);
+				memset(arg_exec[argc+1], 0, 5);
+				sprintf(arg_exec[argc+1], "%d", port);
+
+				arg_exec[argc+2] = NULL;
 
 				/* jump to new prog : */
-				execvp("ssh", arg_exec);
+				execvp(arg_exec[0], arg_exec);
 
 				/* Sortie de la boucle */
 				break;
@@ -240,71 +241,58 @@ int main(int argc, char *argv[])
 			}
 		}
 
-		/* on accepte les connexions des processus dsm */
-		//client_sock[i] = do_accept(sock, (struct sockaddr *)&client_addr, (socklen_t *)&struct_size);
-
-		/* On recupere le nom de la machine distante */
-		/* 1- d'abord la taille de la chaine */
-		/* 2- puis la chaine elle-meme */
-
-		/* On recupere le pid du processus distant */
-
-		/* On recupere le numero de port de la socket */
-		/* d'ecoute des processus distants */
-
-		 
-		/* envoi du nombre de processus aux processus dsm*/
-
-		/* envoi des rangs aux processus dsm */
-
-		/* envoi des infos de connexion aux processus */
-
-		/* gestion des E/S : on recupere les caracteres */
-		/* sur les tubes de redirection de stdout/stderr */
 		if (pid > 0)
 		{
-			while(1)
+			for (i = 0; i < num_procs; i++)
 			{
-				for (i = 0; i < num_procs; i++)
-				{
-					/* Affichage du stdout */
-					memset(buf, 0, LENGTH);
-					if (read(fd1[i][0], buf, LENGTH) > 0)
-					{
-						memset(buffer, 0, LENGTH);
-						sprintf(buffer, "[Proc %i : %s : stdout] %s\n", i, machine[i].name, buf);
-						fflush(stdout);
-						write(STDOUT_FILENO, buffer, LENGTH);
-						fflush(stdout);
-					}
+				/* on accepte les connexions des processus dsm */
+				//client_sock[i] = do_accept(sock, (struct sockaddr *)&client_addr, (socklen_t *)&struct_size);
 
-					/* Affichage du stderr */
-					memset(buf, 0, LENGTH);
-					if (read(fd2[i][0], buf, LENGTH) > 0)
-					{
-						memset(buffer, 0, LENGTH);
-						sprintf(buffer, "[Proc %i : %s : stderr] %s\n", i, machine[i].name, buf);
-						fflush(stdout);
-						write(STDOUT_FILENO, buffer, LENGTH);
-						fflush(stdout);
-					}
-				}
+				/* On recupere le nom de la machine distante */
+				/* 1- d'abord la taille de la chaine */
+				/* 2- puis la chaine elle-meme */
 
-				/* Pour l'instant */
-				break;
+				/* On recupere le pid du processus distant */
+
+				/* On recupere le numero de port de la socket */
+				/* d'ecoute des processus distants */
+
+				 
+				/* envoi du nombre de processus aux processus dsm*/
+
+				/* envoi des rangs aux processus dsm */
+
+				/* envoi des infos de connexion aux processus */
+			}
+
+			/* gestion des E/S : on recupere les caracteres */
+			/* sur les tubes de redirection de stdout/stderr */
+			thread = malloc(2 * num_procs * sizeof(pthread_t));
+
+			for (i = 0; i < num_procs; i++)
+			{
+				pthread_create(thread+i, NULL, proc_display, arguments(fd1[i][0], "stdout"));
+				pthread_create(thread+i+num_procs, NULL, proc_display, arguments(fd2[i][0], "stderr"));
 			}
 		 
 			/* on attend les processus fils */
 			for(i = 0; i < num_procs ; i++)
+			{
+				pthread_join(thread[i], NULL);
+				pthread_join(thread[i+num_procs], NULL);
 				wait(NULL);
+			}
 		}
 
 		/* on ferme les descripteurs proprement */
+		close(fd);
 
 		/* on ferme la socket d'ecoute */
 		close(sock);
 
 		/* On libère toutes les mémoires allouées */
+		free(arg_exec[5]);
+		free(thread);
 		free(client_sock);
 		free(fd1);
 		free(fd2);

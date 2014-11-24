@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/types.h>
@@ -10,6 +11,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <assert.h>
+#include <pthread.h>
 
 /* autres includes (eventuellement) */
 
@@ -32,12 +34,20 @@ struct dsm_proc
 {
 	int rank;
 	pid_t pid;
-	char * name;
+	char name[LENGTH];
 	dsm_proc_conn_t connect_info;
 };
 
 typedef struct dsm_proc dsm_proc_t;
 
-int creer_socket(int type, int *port_num);
+struct arguments
+{
+	int fd;
+	const char * type;
+};
 
-void error(const char *msg);
+typedef struct arguments proc_args_t;
+
+int init_socket(int type);
+int creer_socket(int type, int *port_num);
+void * arguments(int fd, const char * type);
