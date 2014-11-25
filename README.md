@@ -1,5 +1,9 @@
 # PR204 #
 
+## 1.4.0 ##
+* Préparation des arguments dans dsmwrap
+* Résolution du bug du read non bloquant
+
 ## 1.3.0 ##
 * Lecture de STDOUT et STDERR par threads
 * Ajout d'arguments pour le SSH

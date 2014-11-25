@@ -18,8 +18,8 @@ void usage(void)
 
 void sigchld_handler(int sig)
 {
-	 /* on traite les fils qui se terminent */
-	 /* pour eviter les zombies */
+	while(num_procs_creat)
+		usleep(500);
 }
 
 int do_accept(int sock, struct sockaddr * client_addr, socklen_t * client_size)
@@ -75,6 +75,7 @@ int count_lines(int fd)
 void * proc_display(void * arguments)
 {
 	int n;
+	short toto;
 	int fd;
 	const char * type;
 	char buf[LENGTH];
@@ -85,23 +86,19 @@ void * proc_display(void * arguments)
 	fd = args->fd;
 	type = args->type;
 
-	while(1)
+	while(++toto && toto < 100)
 	{
 		memset(buf, 0, LENGTH);
-		n = read_fd(fd, buf);
+
+		n = read(fd, buf, LENGTH);
 
 		if (n > 0)
 		{
 			memset(buffer, 0, LENGTH);
 			sprintf(buffer, "[%s] %s\n", type, buf);
 			fflush(stdout);
-			write(STDOUT_FILENO, buffer, strlen(buffer));
+			write(STDOUT_FILENO, buffer, LENGTH);
 			fflush(stdout);
-		}
-		else
-		{
-			/* economie de ressources */
-			usleep(500);
 		}
 	}
 
@@ -125,17 +122,20 @@ int main(int argc, char ** argv)
 		int (*fd2)[2];
 		int i, j;
 		int struct_size = sizeof(struct sockaddr_in);
+		struct sigaction p_action;
 
 		int sock;
 		struct sockaddr_in client_addr;
-		char * arg_exec[argc + 3];
 
 		dsm_proc_t * machine;
 		int * client_sock;
 		pthread_t * thread;
-		 
-		 /* Mise en place d'un traitant pour recuperer les fils zombies */      
-		 /* XXX.sa_handler = sigchld_handler; */
+		
+		/* Mise en place d'un traitant pour recuperer les fils zombies */      
+		memset(&p_action, 0, sizeof(struct sigaction));
+		p_action.sa_handler = sigchld_handler;
+
+		sigaction(SIGCHLD, &p_action, NULL);
 		 
 		/* lecture du fichier de machines */
 		fd = open(argv[1], O_RDONLY);
@@ -175,6 +175,9 @@ int main(int argc, char ** argv)
 		/* Allocation de la mémoire pour le tableau de socks d'initialisation */
 		client_sock = malloc(num_procs * sizeof(int));
 
+		/* Allocation de la mémoire pour le tableau d'arguments */
+		char * arg_exec[argc + num_procs + 5];
+
 		/* creation des fils */
 		for(i = 0; i < num_procs ; i++)
 		{
@@ -203,13 +206,19 @@ int main(int argc, char ** argv)
 				dup(fd2[i][1]);
 				close(fd2[i][1]);
 
+				for (j = 0; j < i; j++)
+				{
+					close(fd1[j][0]);
+					close(fd1[j][0]);
+				}
+
 				/* Recuperation du PID du fils */
 				machine[i].pid = getpid();
 
 				/* Creation du tableau d'arguments pour le ssh */
 				arg_exec[0] = "ssh";
 				arg_exec[1] = machine[i].name;
-				arg_exec[2] = "./dsmwrap";
+				arg_exec[2] = "~/PR204/Phase1/bin/dsmwrap";
 
 				/* Introduction des arguments */
 				for (j = 3; j < argc+1; j++)
@@ -218,18 +227,26 @@ int main(int argc, char ** argv)
 				}
 
 				/* Introduction des arguments utiles mais non lances sur ssh */
-				/* 1 - port */
-				arg_exec[argc+1] = malloc(5);
-				memset(arg_exec[argc+1], 0, 5);
-				sprintf(arg_exec[argc+1], "%d", port);
+				/* 1 - le nom des machines */
+				for (j = argc+1; j < argc+1+num_procs; j++)
+					arg_exec[j] = machine[j-argc-1].name;
 
-				arg_exec[argc+2] = NULL;
+				/* 2 - port */
+				arg_exec[argc+num_procs+1] = malloc(5);
+				memset(arg_exec[argc+num_procs+1], 0, 5);
+				sprintf(arg_exec[argc+num_procs+1], "%d", port);
+				
+				/* 3 - le nom de la machine courante */
+				arg_exec[argc+num_procs+2] = "localhost";
+
+				/* 4 - transmission de num_procs */
+				arg_exec[argc+num_procs+3] = malloc((int)(1+log10(num_procs)));
+				memset(arg_exec[argc+num_procs+3], 0, (int)(1+log10(num_procs)));
+				sprintf(arg_exec[argc+num_procs+3], "%d", num_procs);
+				arg_exec[argc+num_procs+4] = NULL;
 
 				/* jump to new prog : */
 				execvp(arg_exec[0], arg_exec);
-
-				/* Sortie de la boucle */
-				break;
 			}
 			else if (pid > 0)
 			{ /* pere */		      
@@ -241,47 +258,44 @@ int main(int argc, char ** argv)
 			}
 		}
 
-		if (pid > 0)
+		for (i = 0; i < num_procs; i++)
 		{
-			for (i = 0; i < num_procs; i++)
-			{
-				/* on accepte les connexions des processus dsm */
-				//client_sock[i] = do_accept(sock, (struct sockaddr *)&client_addr, (socklen_t *)&struct_size);
+			/* on accepte les connexions des processus dsm */
+			//client_sock[i] = do_accept(sock, (struct sockaddr *)&client_addr, (socklen_t *)&struct_size);
 
-				/* On recupere le nom de la machine distante */
-				/* 1- d'abord la taille de la chaine */
-				/* 2- puis la chaine elle-meme */
+			/* On recupere le nom de la machine distante */
+			/* 1- d'abord la taille de la chaine */
+			/* 2- puis la chaine elle-meme */
 
-				/* On recupere le pid du processus distant */
+			/* On recupere le pid du processus distant */
 
-				/* On recupere le numero de port de la socket */
-				/* d'ecoute des processus distants */
+			/* On recupere le numero de port de la socket */
+			/* d'ecoute des processus distants */
 
-				 
-				/* envoi du nombre de processus aux processus dsm*/
+			 
+			/* envoi du nombre de processus aux processus dsm*/
 
-				/* envoi des rangs aux processus dsm */
+			/* envoi des rangs aux processus dsm */
 
-				/* envoi des infos de connexion aux processus */
-			}
+			/* envoi des infos de connexion aux processus */
+		}
 
-			/* gestion des E/S : on recupere les caracteres */
-			/* sur les tubes de redirection de stdout/stderr */
-			thread = malloc(2 * num_procs * sizeof(pthread_t));
+		/* gestion des E/S : on recupere les caracteres */
+		/* sur les tubes de redirection de stdout/stderr */
+		thread = malloc(2 * num_procs * sizeof(pthread_t));
 
-			for (i = 0; i < num_procs; i++)
-			{
-				pthread_create(thread+i, NULL, proc_display, arguments(fd1[i][0], "stdout"));
-				pthread_create(thread+i+num_procs, NULL, proc_display, arguments(fd2[i][0], "stderr"));
-			}
-		 
-			/* on attend les processus fils */
-			for(i = 0; i < num_procs ; i++)
-			{
-				pthread_join(thread[i], NULL);
-				pthread_join(thread[i+num_procs], NULL);
-				wait(NULL);
-			}
+		for (i = 0; i < num_procs; i++)
+		{
+			pthread_create(thread+i, NULL, proc_display, arguments(fd1[i][0], "stdout"));
+			pthread_create(thread+i+num_procs, NULL, proc_display, arguments(fd2[i][0], "stderr"));
+		}
+	 
+		/* on attend les processus fils */
+		for(i = 0; i < num_procs ; i++)
+		{
+			pthread_join(thread[i], NULL);
+			pthread_join(thread[i+num_procs], NULL);
+			wait(NULL);
 		}
 
 		/* on ferme les descripteurs proprement */
@@ -291,7 +305,6 @@ int main(int argc, char ** argv)
 		close(sock);
 
 		/* On libère toutes les mémoires allouées */
-		free(arg_exec[5]);
 		free(thread);
 		free(client_sock);
 		free(fd1);

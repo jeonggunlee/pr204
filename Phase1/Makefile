@@ -9,7 +9,7 @@ SHELL = /bin/sh
 
 CFLAGS  =   -DREENTRANT -Wunused -Wall -g
 CCFLAGS = $(CFLAGS)
-LIBS =  -lpthread
+LIBS =  -lpthread -lm
 
 EXECS = common.o dsmexec dsmwrap truc
 

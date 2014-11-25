@@ -2,14 +2,24 @@
 
 int main(int argc, char ** argv)
 {
+	int i;
 	int client_sock;
 	int sock;
-	int port_dsmexec = atoi(argv[argc-1]);
+	int num_procs = atoi(argv[argc-1]);
+	int port_launcher = atoi(argv[argc-3]);
 	int mon_port;
+
+	char * host = argv[argc-2];
+	char * machine_name[num_procs];
+	char * arg_exec[argc-num_procs-2];
 
 	/* processus intermediaire pour "nettoyer" */
 	/* la liste des arguments qu'on va passer */
 	/* a la commande a executer vraiment */
+
+	/* recuperation des noms des machines */
+	for (i = 0; i < num_procs; i++)
+		machine_name[i] = argv[argc-i-4];
 
 	/* creation d'une socket pour se connecter au */
 	/* au lanceur et envoyer/recevoir les infos */
@@ -28,6 +38,16 @@ int main(int argc, char ** argv)
 	/* pour qu'il le propage à tous les autres */
 	/* processus dsm */
 
+	/* 1 - recuperation des "vrais" arguments */
+	for (i = 1; i < argc-num_procs-3; i++)
+		arg_exec[i-1] = argv[i];
+
+	/* 2 - ajout du NULL */
+	arg_exec[argc-num_procs-3] = NULL;
+
 	/* on execute la bonne commande */
+	execvp(arg_exec[0], arg_exec);
+
+
 	return 0;
 }

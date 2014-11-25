@@ -2,9 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <arpa/inet.h>
 #include <sys/types.h>
-#include <sys/socket.h>
 #include <sys/wait.h>
 #include <sys/ioctl.h>
 #include <errno.h>
@@ -12,6 +10,11 @@
 #include <fcntl.h>
 #include <assert.h>
 #include <pthread.h>
+#include <netdb.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <math.h>
 
 /* autres includes (eventuellement) */
 
