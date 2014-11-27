@@ -107,7 +107,6 @@ void * proc_display(void * arguments)
 
 int main(int argc, char ** argv)
 {
-
 	if (argc < 3)
 	{
 		usage();
@@ -130,6 +129,7 @@ int main(int argc, char ** argv)
 		dsm_proc_t * machine;
 		int * client_sock;
 		pthread_t * thread;
+		char ** arg_exec;
 		
 		/* Mise en place d'un traitant pour recuperer les fils zombies */      
 		memset(&p_action, 0, sizeof(struct sigaction));
@@ -176,7 +176,7 @@ int main(int argc, char ** argv)
 		client_sock = malloc(num_procs * sizeof(int));
 
 		/* Allocation de la mémoire pour le tableau d'arguments */
-		char * arg_exec[argc + num_procs + 5];
+		arg_exec = malloc((argc + num_procs + 5) * sizeof(*arg_exec));
 
 		/* creation des fils */
 		for(i = 0; i < num_procs ; i++)
@@ -305,6 +305,7 @@ int main(int argc, char ** argv)
 		close(sock);
 
 		/* On libère toutes les mémoires allouées */
+		// libération de la mémoire du char à faire
 		free(thread);
 		free(client_sock);
 		free(fd1);
