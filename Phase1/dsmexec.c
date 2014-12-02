@@ -1,12 +1,12 @@
 #include "common_impl.h"
 
-/* variables globales */
+// variables globales
 
-/* un tableau gerant les infos d'identification */
-/* des processus dsm */
-dsm_proc_t * proc_array = NULL; 
+// un tableau gerant les infos d'identification
+// des processus dsm
+dsm_proc_t * proc_array = NULL;
 
-/* le nombre de processus effectivement crees */
+// le nombre de processus effectivement crees
 volatile int num_procs_creat = 0;
 
 void usage(void)
@@ -18,90 +18,122 @@ void usage(void)
 
 void sigchld_handler(int sig)
 {
-	while(num_procs_creat)
-		usleep(500);
-}
+	pid_t pid;
 
-int do_accept(int sock, struct sockaddr * client_addr, socklen_t * client_size)
-{
-    int fd;
-    fd = accept(sock, client_addr, client_size);
-    if (fd == -1)
-        ERROR_EXIT("Accept error");
-    return fd;
-}
-
-ssize_t read_fd(int fd, char * buf)
-{
-	int i = 0;
-	char c;
-
-	memset(buf, 0, LENGTH);
-
-	while (1)
+	while ((pid = waitpid(-1, NULL, WNOHANG)) != -1)
 	{
-		if ((read(fd, &c, 1) == 0)||(c == '\n')||(i == LENGTH))
-			break;
-
-		buf[i] = c;
-		i++;
+		if (pid > 0)
+			num_procs_creat--;
+		sleep(1);
 	}
-
-	return i;
 }
 
-int count_lines(int fd)
+ssize_t count_lines(const char * filename, int * num_procs)
 {
-	int count = 0;
-	char * c = malloc(2);
+	int fd;
+	ssize_t size = 0;
+	char c[2];
 
-	while (1)
+	memset(c, 0, 2);
+
+	fd = open(filename, O_RDONLY);
+
+	if (fd != -1)
 	{
-		if (read(fd, c+1, 1) == 0)
+		while (read(fd, c+1, 1) > 0)
 		{
-			if (c[0] != '\n')
-				count++;
-			break;
+			if (c[1] == '\n')
+				(*num_procs)++;
+			size++;
 		}
 
-		if (c[1] == '\n')
-			count++;
+		if (c[1] != '\n')
+			(*num_procs)++;
+	}
+	else
+	{
+		fprintf(stdout, "Fichier invalide\n");
+		fflush(stdout);
+		exit(EXIT_FAILURE);
 	}
 
-	free(c);
-	return count;
+	close(fd);
+	return size;
 }
 
-void * proc_display(void * arguments)
+void machine_names(const char * filename, char ** machines, ssize_t size)
+{
+	int i;
+	int k = 0;
+	int cursor = 0;
+	int fd;
+	char buf[size+1];
+
+	fd = open(filename, O_RDONLY);
+
+	if (fd != -1)
+	{
+		read(fd, buf, size);
+
+		for (i = 0; i <= size; i++)
+		{
+			if ((buf[i] == '\n') || ((i == size) && (buf[size] != '\n')))
+			{
+				machines[k] = malloc(i-cursor+1);
+				memset(machines[k], '\0', i-cursor+1);
+				strncpy(machines[k], buf+cursor, i-cursor);
+				cursor = i+1;
+				k++;
+			}
+		}
+	}
+	else
+	{
+		fprintf(stdout, "Fichier invalide\n");
+		fflush(stdout);
+		exit(EXIT_FAILURE);
+	}
+
+	close(fd);
+}
+
+void * display(void * arguments)
 {
 	int n;
-	short toto;
 	int fd;
-	const char * type;
+	int count = 0;
+	char * type;
 	char buf[LENGTH];
 	char buffer[LENGTH];
 
 	proc_args_t * args = arguments;
-
 	fd = args->fd;
 	type = args->type;
 
-	while(++toto && toto < 100)
+	while(1)
 	{
-		memset(buf, 0, LENGTH);
-
+		memset(buf, '\0', LENGTH);
+		memset(buffer, '\0', LENGTH);
+		
 		n = read(fd, buf, LENGTH);
 
 		if (n > 0)
 		{
-			memset(buffer, 0, LENGTH);
 			sprintf(buffer, "[%s] %s\n", type, buf);
+			write(STDOUT_FILENO, buffer, strlen(buffer));
 			fflush(stdout);
-			write(STDOUT_FILENO, buffer, LENGTH);
-			fflush(stdout);
+			count = 0;
+		}
+		else
+		{
+			count++;
+			if (count == 100)
+				break;
 		}
 	}
 
+	free(type);
+	free(args);
 	pthread_exit(NULL);
 }
 
@@ -115,142 +147,130 @@ int main(int argc, char ** argv)
 	{
 		pid_t pid;
 		int fd;
-		int num_procs;
-		int port;
+		int num_procs = 0;
+		int i, j;
 		int (*fd1)[2];
 		int (*fd2)[2];
-		int i, j;
-		int struct_size = sizeof(struct sockaddr_in);
-		struct sigaction p_action;
+		int port = 1024;
+		int * client_fd;
+		ssize_t size;
 
-		int sock;
+		char ** machines;
+		char ** newargv;
+		char hostname[LENGTH];
+		char buf[LENGTH];
+		const char * machine_file = argv[1];
+
+		struct sigaction zombie;
+		pthread_t * thr1;
+		pthread_t * thr2;
+
 		struct sockaddr_in client_addr;
+		socklen_t client_size = sizeof(struct sockaddr_in);
 
-		dsm_proc_t * machine;
-		int * client_sock;
-		pthread_t * thread;
-		char ** arg_exec;
+		dsm_proc_t * machines_connectees;
 		
-		/* Mise en place d'un traitant pour recuperer les fils zombies */      
-		memset(&p_action, 0, sizeof(struct sigaction));
-		p_action.sa_handler = sigchld_handler;
+		// Mise en place d'un traitant pour recuperer les fils zombies
+		memset(&zombie, 0, sizeof(struct sigaction));
+		zombie.sa_handler = sigchld_handler;
+		zombie.sa_flags = SA_RESTART;
+		sigaction(SIGCHLD, &zombie, NULL);
+		
+		// Lecture du fichier de machines
+		// 1- on recupere le nombre de processus a lancer
+		size = count_lines(machine_file , &num_procs);
 
-		sigaction(SIGCHLD, &p_action, NULL);
-		 
-		/* lecture du fichier de machines */
-		fd = open(argv[1], O_RDONLY);
+		// 2- on recupere les noms des machines : le nom de la machine est un des elements d'identification
+		machines = malloc(num_procs * sizeof(char *));
+		machine_names(machine_file, machines, size);
 
-		if (fd != -1)
-		{
-			/* 1- on recupere le nombre de processus a lancer */
-			num_procs = count_lines(fd);
-			
-			/* 2- on recupere les noms des machines : le nom de */
-			/* la machine est un des elements d'identification */
-			machine = malloc(num_procs * sizeof(dsm_proc_t));
-			lseek(fd, 0, SEEK_SET);
+		// creation de la socket d'ecoute
+		fd = creer_socket(SOCK_STREAM, &port);
+		
+		// ecoute effective
+		listen(fd, num_procs);
 
-			for (i = 0; i < num_procs; ++i)
-			{
-				machine[i].rank = i;
-				read_fd(fd, machine[i].name);
-			}
-		}
-		else
-		{
-			exit(EXIT_FAILURE);
-		}
-		 
-		/* creation de la socket d'ecoute */
-		port = 1024;
-		sock = creer_socket(SOCK_STREAM, &port);
+		memset(hostname, '\0', LENGTH);
+		gethostname(hostname, LENGTH);
 
-		/* + ecoute effective */
-		listen(sock, num_procs);
-
-		/* Allocation de la mémoire pour la création des tubes */
+		// allocation des memoires
 		fd1 = malloc(2 * num_procs * sizeof(int));
 		fd2 = malloc(2 * num_procs * sizeof(int));
-
-		/* Allocation de la mémoire pour le tableau de socks d'initialisation */
-		client_sock = malloc(num_procs * sizeof(int));
-
-		/* Allocation de la mémoire pour le tableau d'arguments */
-		arg_exec = malloc((argc + num_procs + 5) * sizeof(*arg_exec));
-
-		/* creation des fils */
-		for(i = 0; i < num_procs ; i++)
+		newargv = malloc((argc+num_procs+4) * sizeof(char *));
+		client_fd = malloc(num_procs * sizeof(int));
+		machines_connectees = malloc(num_procs * sizeof(dsm_proc_t));
+		
+		// creation des fils
+		for (i = 0; i < num_procs ; i++)
 		{
-			/* creation du tube pour rediriger stdout */
+			// creation du tube pour rediriger stdout
 			pipe(fd1[i]);
 
-			/* creation du tube pour rediriger stderr */
+			// creation du tube pour rediriger stderr
 			pipe(fd2[i]);
-
+			
 			pid = fork();
 
-			if(pid == -1)
-				ERROR_EXIT("fork");
+			if (pid == -1) ERROR_EXIT("fork");
 			
 			if (pid == 0)
-			{ /* fils */
-				/* redirection stdout */
+			{ // fils
+				
+				// redirection stdout
 				close(fd1[i][0]);
 				close(STDOUT_FILENO);
 				dup(fd1[i][1]);
 				close(fd1[i][1]);
 
-				/* redirection stderr */
+				// redirection stderr
 				close(fd2[i][0]);
 				close(STDERR_FILENO);
 				dup(fd2[i][1]);
 				close(fd2[i][1]);
 
+				// fermeture des extremites des autres tubes
 				for (j = 0; j < i; j++)
 				{
 					close(fd1[j][0]);
-					close(fd1[j][0]);
+					close(fd2[j][0]);
 				}
 
-				/* Recuperation du PID du fils */
-				machine[i].pid = getpid();
+				// creation du tableau d'arguments pour le ssh
+				// 1- ssh
+				newargv[0] = string_copy("ssh");
 
-				/* Creation du tableau d'arguments pour le ssh */
-				arg_exec[0] = "ssh";
-				arg_exec[1] = machine[i].name;
-				arg_exec[2] = "~/PR204/Phase1/bin/dsmwrap";
+				// 2- nom de la machine distante
+				newargv[1] = string_copy(machines[i]);
 
-				/* Introduction des arguments */
-				for (j = 3; j < argc+1; j++)
-				{
-					arg_exec[j] = argv[j-1];
-				}
+				// 3- dsmwrap
+				newargv[2] = string_copy(DSMWRAP_PATH);
 
-				/* Introduction des arguments utiles mais non lances sur ssh */
-				/* 1 - le nom des machines */
-				for (j = argc+1; j < argc+1+num_procs; j++)
-					arg_exec[j] = machine[j-argc-1].name;
+				// 4- executable + ses arguments
+				for (j = 2; j < argc; j++)
+					newargv[j+1] = string_copy(argv[j]);
 
-				/* 2 - port */
-				arg_exec[argc+num_procs+1] = malloc(5);
-				memset(arg_exec[argc+num_procs+1], 0, 5);
-				sprintf(arg_exec[argc+num_procs+1], "%d", port);
-				
-				/* 3 - le nom de la machine courante */
-				arg_exec[argc+num_procs+2] = "localhost";
+				// 5- le nom des machines
+				for (j = 0; j < num_procs; j++)
+					newargv[j+argc+1] = string_copy(machines[j]);
 
-				/* 4 - transmission de num_procs */
-				arg_exec[argc+num_procs+3] = malloc((int)(1+log10(num_procs)));
-				memset(arg_exec[argc+num_procs+3], 0, (int)(1+log10(num_procs)));
-				sprintf(arg_exec[argc+num_procs+3], "%d", num_procs);
-				arg_exec[argc+num_procs+4] = NULL;
+				// 6- port de dsmexec
+				newargv[argc+num_procs+1] = int_copy(port);
 
-				/* jump to new prog : */
-				execvp(arg_exec[0], arg_exec);
+				// 7- ip courante
+				newargv[argc+num_procs+2] = string_copy(hostname);
+
+				// 8- num_procs
+				newargv[argc+num_procs+3] = int_copy(num_procs);
+
+				// 9- NULL
+				newargv[argc+num_procs+4] = NULL;
+
+				// jump to new prog :
+				execvp(newargv[0], newargv);
 			}
 			else if (pid > 0)
-			{ /* pere */		      
-				/* fermeture des extremites des tubes non utiles */
+			{ // pere
+				// fermeture des extremites des tubes non utiles
 				close(fd1[i][1]);
 				close(fd2[i][1]);
 
@@ -259,60 +279,75 @@ int main(int argc, char ** argv)
 		}
 
 		for (i = 0; i < num_procs; i++)
-		{
-			/* on accepte les connexions des processus dsm */
-			//client_sock[i] = do_accept(sock, (struct sockaddr *)&client_addr, (socklen_t *)&struct_size);
+		{	
+			// on accepte les connexions des processus dsm
+			client_fd[i] = do_accept(fd, (struct sockaddr *)&client_addr, &client_size);
 
-			/* On recupere le nom de la machine distante */
-			/* 1- d'abord la taille de la chaine */
-			/* 2- puis la chaine elle-meme */
+			// On recupere le nom de la machine distante
+			receive(client_fd[i], buf);
+			machines_connectees[i].connect_info.hostname = string_copy(buf);
 
-			/* On recupere le pid du processus distant */
+			fprintf(stdout, "Machine : %s\n", buf);
+			fflush(stdout);
+			
+			// On recupere le pid du processus distant
+			receive(client_fd[i], buf);
+			machines_connectees[i].pid = atoi(string_copy(buf));
 
-			/* On recupere le numero de port de la socket */
-			/* d'ecoute des processus distants */
+			fprintf(stdout, "PID : %s\n", buf);
+			fflush(stdout);
 
-			 
-			/* envoi du nombre de processus aux processus dsm*/
-
-			/* envoi des rangs aux processus dsm */
-
-			/* envoi des infos de connexion aux processus */
+			// On recupere le numero de port de la socket
+			// d'ecoute des processus distants
 		}
-
-		/* gestion des E/S : on recupere les caracteres */
-		/* sur les tubes de redirection de stdout/stderr */
-		thread = malloc(2 * num_procs * sizeof(pthread_t));
+		
+		// envoi du nombre de processus aux processus dsm
+		
+		// envoi des rangs aux processus dsm
+		
+		// envoi des infos de connexion aux processus
+		
+		// gestion des E/S : on recupere les caracteres
+		// sur les tubes de redirection de stdout/stderr
+		thr1 = malloc(num_procs * sizeof(pthread_t));
+		thr2 = malloc(num_procs * sizeof(pthread_t));
 
 		for (i = 0; i < num_procs; i++)
 		{
-			pthread_create(thread+i, NULL, proc_display, arguments(fd1[i][0], "stdout"));
-			pthread_create(thread+i+num_procs, NULL, proc_display, arguments(fd2[i][0], "stderr"));
-		}
-	 
-		/* on attend les processus fils */
-		for(i = 0; i < num_procs ; i++)
-		{
-			pthread_join(thread[i], NULL);
-			pthread_join(thread[i+num_procs], NULL);
-			wait(NULL);
+			// je recupere les infos sur les tubes de redirection
+			// jusqu'à ce qu'ils soient inactifs (ie fermes par les
+			// processus dsm ecrivains de l'autre cote ...)
+			pthread_create(thr1+i, NULL, display, arguments(fd1[i][0], "stdout"));
+			pthread_create(thr2+i, NULL, display, arguments(fd2[i][0], "stderr"));
 		}
 
-		/* on ferme les descripteurs proprement */
+		for (i = 0; i < num_procs; i++)
+		{
+			pthread_join(thr1[i], NULL);
+			pthread_join(thr2[i], NULL);
+		}
+		
+		// on attend les processus fils
+		while(wait(NULL) > 0);
+		
+		// on ferme les descripteurs proprement
+		
+		// on ferme la socket d'ecoute
 		close(fd);
 
-		/* on ferme la socket d'ecoute */
-		close(sock);
-
-		/* On libère toutes les mémoires allouées */
-		// libération de la mémoire du char à faire
-		free(thread);
-		free(client_sock);
+		// on libere les memoires allouees
+		free(machines_connectees);
+		free(thr1);
+		free(thr2);
+		for (i = 0; i < num_procs; i++)
+			free(machines[i]);
+		for (i = 0; i < argc+num_procs+4; i++)
+			free(newargv[i]);
+		free(client_fd);
+		free(newargv);
+		free(machines);
 		free(fd1);
 		free(fd2);
-		free(machine);
 	}
-
-	exit(EXIT_SUCCESS);  
+	exit(EXIT_SUCCESS);
 }
-

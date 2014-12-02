@@ -3,51 +3,60 @@
 int main(int argc, char ** argv)
 {
 	int i;
-	int client_sock;
-	int sock;
+	int fd;
+	char buf[LENGTH];
+	struct sockaddr_in sockaddr_dsmexec;
+
+	memset(buf, '\0', LENGTH);
+
+	// recuperation du nombre de processus
 	int num_procs = atoi(argv[argc-1]);
-	int port_launcher = atoi(argv[argc-3]);
-	int mon_port;
+	// recuperation du port de dsmexec
+	int port_dsmexec = atoi(argv[argc-3]);
 
-	char * host = argv[argc-2];
-	char * machine_name[num_procs];
-	char * arg_exec[argc-num_procs-2];
+	// recuperation de l'adresse ip de dsmexec
+	char * hostname_dsmexec = string_copy(argv[argc-2]);
+	char * machines[num_procs];
 
-	/* processus intermediaire pour "nettoyer" */
-	/* la liste des arguments qu'on va passer */
-	/* a la commande a executer vraiment */
+	char ** newargv = malloc((argc-num_procs-3) * sizeof(char *));
 
-	/* recuperation des noms des machines */
+	// recuperation du nom des machines
 	for (i = 0; i < num_procs; i++)
-		machine_name[i] = argv[argc-i-4];
+		machines[i] = string_copy(argv[argc-3-num_procs+i]);
 
-	/* creation d'une socket pour se connecter au */
-	/* au lanceur et envoyer/recevoir les infos */
-	/* necessaires pour la phase dsm_init */
-	client_sock = init_socket(SOCK_STREAM);
+	for (i = 0; i < argc-num_procs-3-1; i++)
+		newargv[i] = string_copy(argv[i+1]);
+	
+	newargv[argc-num_procs-3] = NULL;
 
-	/* Envoi du nom de machine au lanceur */
+	// creation d'une socket pour se connecter au
+	// au lanceur et envoyer/recevoir les infos
+	// necessaires pour la phase dsm_init
+	get_addr_info(&sockaddr_dsmexec, hostname_dsmexec, port_dsmexec);
 
-	/* Envoi du pid au lanceur */
+	fd = init_socket(SOCK_STREAM);
+	do_connect(fd, sockaddr_dsmexec);
 
-	/* Creation de la socket d'ecoute pour les */
-	/* connexions avec les autres processus dsm */
-	sock = creer_socket(SOCK_STREAM, &mon_port);
+	// Recuperation du nom de la machine dans le buffer
+	gethostname(buf, LENGTH);
 
-	/* Envoi du numero de port au lanceur */
-	/* pour qu'il le propage à tous les autres */
-	/* processus dsm */
+	// Envoi du nom de machine au lanceur
+	handle_client_message(fd, buf);
 
-	/* 1 - recuperation des "vrais" arguments */
-	for (i = 1; i < argc-num_procs-3; i++)
-		arg_exec[i-1] = argv[i];
+	// Envoi du pid au lanceur
+	memset(buf, '\0', LENGTH);
+	sprintf(buf, "%d", getpid());
+	handle_client_message(fd, buf);
 
-	/* 2 - ajout du NULL */
-	arg_exec[argc-num_procs-3] = NULL;
+	// Creation de la socket d'ecoute pour les
+	// connexions avec les autres processus dsm
 
-	/* on execute la bonne commande */
-	execvp(arg_exec[0], arg_exec);
+	// Envoi du numero de port au lanceur
+	// pour qu'il le propage à tous les autres
+	// processus dsm
 
+	// on execute la bonne commande
+	// execvp(newargv[0], newargv);
 
 	return 0;
 }
