@@ -1,5 +1,12 @@
 # PR204 #
 
+## 1.5.0 ##
+* Ajout de plusieurs fonctions
+* Avancement de dsmwrap et dsmexec
+
+## 1.4.1 ##
+* Ca refonctionne
+
 ## 1.4.0 ##
 * Préparation des arguments dans dsmwrap
 * Résolution du bug du read non bloquant
