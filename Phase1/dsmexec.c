@@ -1,3 +1,4 @@
+#include <semaphore.h>
 #include "common_impl.h"
 
 // variables globales
@@ -100,36 +101,37 @@ void machine_names(const char * filename, char ** machines, ssize_t size)
 void * display(void * arguments)
 {
 	int n;
+	int offset;
 	int fd;
-	int count = 0;
+	int rank;
 	char * type;
+	char * machine;
 	char buf[LENGTH];
 	char buffer[LENGTH];
 
 	proc_args_t * args = arguments;
 	fd = args->fd;
 	type = args->type;
+	machine = args->machine;
+	rank = args->rank;
+
+	offset = 15 + count_digits(rank) + strlen(machine) + strlen(type);
 
 	while(1)
 	{
 		memset(buf, '\0', LENGTH);
 		memset(buffer, '\0', LENGTH);
 		
-		n = read(fd, buf, LENGTH);
+		n = read(fd, buf, LENGTH - offset);
 
 		if (n > 0)
 		{
-			sprintf(buffer, "[%s] %s\n", type, buf);
+			sprintf(buffer, "[Proc %d : %s : %s] %s\n", rank, machine, type, buf);
 			write(STDOUT_FILENO, buffer, strlen(buffer));
 			fflush(stdout);
-			count = 0;
 		}
 		else
-		{
-			count++;
-			if (count == 100)
-				break;
-		}
+			break;
 	}
 
 	free(type);
@@ -151,7 +153,7 @@ int main(int argc, char ** argv)
 		int i, j;
 		int (*fd1)[2];
 		int (*fd2)[2];
-		int port = 1024;
+		int port;
 		int * client_fd;
 		ssize_t size;
 
@@ -167,8 +169,6 @@ int main(int argc, char ** argv)
 
 		struct sockaddr_in client_addr;
 		socklen_t client_size = sizeof(struct sockaddr_in);
-
-		dsm_proc_t * machines_connectees;
 		
 		// Mise en place d'un traitant pour recuperer les fils zombies
 		memset(&zombie, 0, sizeof(struct sigaction));
@@ -198,7 +198,7 @@ int main(int argc, char ** argv)
 		fd2 = malloc(2 * num_procs * sizeof(int));
 		newargv = malloc((argc+num_procs+4) * sizeof(char *));
 		client_fd = malloc(num_procs * sizeof(int));
-		machines_connectees = malloc(num_procs * sizeof(dsm_proc_t));
+		proc_array = malloc(num_procs * sizeof(dsm_proc_t));
 		
 		// creation des fils
 		for (i = 0; i < num_procs ; i++)
@@ -285,20 +285,18 @@ int main(int argc, char ** argv)
 
 			// On recupere le nom de la machine distante
 			receive(client_fd[i], buf);
-			machines_connectees[i].connect_info.hostname = string_copy(buf);
-
-			fprintf(stdout, "Machine : %s\n", buf);
-			fflush(stdout);
+			proc_array[i].connect_info.hostname = string_copy(buf);
 			
 			// On recupere le pid du processus distant
 			receive(client_fd[i], buf);
-			machines_connectees[i].pid = atoi(string_copy(buf));
-
-			fprintf(stdout, "PID : %s\n", buf);
-			fflush(stdout);
+			proc_array[i].pid = atoi(string_copy(buf));
 
 			// On recupere le numero de port de la socket
 			// d'ecoute des processus distants
+			receive(client_fd[i], buf);
+			proc_array[i].connect_info.port = atoi(string_copy(buf));
+
+			proc_array[i].connect_info.rank = i;
 		}
 		
 		// envoi du nombre de processus aux processus dsm
@@ -317,8 +315,8 @@ int main(int argc, char ** argv)
 			// je recupere les infos sur les tubes de redirection
 			// jusqu'à ce qu'ils soient inactifs (ie fermes par les
 			// processus dsm ecrivains de l'autre cote ...)
-			pthread_create(thr1+i, NULL, display, arguments(fd1[i][0], "stdout"));
-			pthread_create(thr2+i, NULL, display, arguments(fd2[i][0], "stderr"));
+			pthread_create(thr1+i, NULL, display, arguments(fd1[i][0], "stdout", proc_array+i));
+			pthread_create(thr2+i, NULL, display, arguments(fd2[i][0], "stderr", proc_array+i));
 		}
 
 		for (i = 0; i < num_procs; i++)
@@ -336,7 +334,7 @@ int main(int argc, char ** argv)
 		close(fd);
 
 		// on libere les memoires allouees
-		free(machines_connectees);
+		free(proc_array);
 		free(thr1);
 		free(thr2);
 		for (i = 0; i < num_procs; i++)

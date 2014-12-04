@@ -24,6 +24,7 @@
 struct dsm_proc_conn
 {
 	int rank;
+	int port;
 	char * hostname;
 };
 typedef struct dsm_proc_conn dsm_proc_conn_t; 
@@ -41,6 +42,8 @@ struct proc_args
 {
 	int fd;
 	char * type;
+	char * machine;
+	int rank;
 };
 typedef struct proc_args proc_args_t;
 
@@ -48,7 +51,8 @@ int count_digits(int number);
 char * string_copy(char * src);
 char * int_copy(int number);
 int do_accept(int sock, struct sockaddr * client_addr, socklen_t * client_size);
-void * arguments(int fd, char * type);
+void read_line(int fd, char buf[LENGTH]);
+void * arguments(int fd, char * type, dsm_proc_t * proc);
 void get_addr_info(struct sockaddr_in * server, char * address, int port);
 void do_connect(int sock, struct sockaddr_in addr);
 void handle_client_message(int fd, char * msg);

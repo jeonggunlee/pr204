@@ -69,26 +69,22 @@ int init_socket(int type)
 int creer_socket(int type, int * port_num)
 {
 	int fd = init_socket(type);
+	int size_addr_len = sizeof(struct sockaddr_in);
 	struct sockaddr_in server_addr;
 
 	// initialisation du serveur
 	memset(&server_addr, 0, sizeof(struct sockaddr_in));
-	server_addr.sin_port = htons(*port_num);
+	server_addr.sin_port = htons(0);
 	server_addr.sin_family = AF_INET;
 	server_addr.sin_addr.s_addr = INADDR_ANY;
 
 	// attachement de la nouvelle socket
-	while(bind(fd, (struct sockaddr *)&server_addr, sizeof(struct sockaddr_in)) == -1)
-	{
-		// erreur sur le port
-		if (errno == EADDRINUSE)
-		{
-			(*port_num)++;
-			server_addr.sin_port = htons(*port_num);
-		}
-		else
-			ERROR_EXIT("Bind error");
-	}
+	if (bind(fd, (struct sockaddr *)&server_addr, sizeof(struct sockaddr_in)) == -1)
+		ERROR_EXIT("Bind error")
+
+	getsockname(fd, (struct sockaddr *)&server_addr, (socklen_t *)&size_addr_len);
+
+	*port_num = ntohs(server_addr.sin_port);
 	
 	return fd;
 }
@@ -112,14 +108,31 @@ void handle_client_message(int fd, char * msg)
 
 void receive(int fd, char * buf)
 {
+	int i = 0;
+
 	memset(buf, '\0', LENGTH);
-	recv(fd, buf, LENGTH, 0);
+	
+	while (recv(fd, buf+i, 1, 0) > 0)
+	{
+		if (buf[i] == '\n')
+		{
+			buf[i] = '\0';
+			break;
+		}
+
+		i++;
+
+		if (i == LENGTH-1)
+			break;
+	}
 }
 
-void * arguments(int fd, char * type)
+void * arguments(int fd, char * type, dsm_proc_t * proc)
 {
 	proc_args_t * args = malloc(sizeof(proc_args_t));
 	args->fd = fd;
 	args->type = string_copy(type);
+	args->machine = string_copy(proc->connect_info.hostname);
+	args->rank = proc->connect_info.rank;
 	return args;
 }
