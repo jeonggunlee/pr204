@@ -196,7 +196,7 @@ int main(int argc, char ** argv)
 		// allocation des memoires
 		fd1 = malloc(2 * num_procs * sizeof(int));
 		fd2 = malloc(2 * num_procs * sizeof(int));
-		newargv = malloc((argc+num_procs+4) * sizeof(char *));
+		newargv = malloc((argc+3) * sizeof(char *));
 		client_fd = malloc(num_procs * sizeof(int));
 		proc_array = malloc(num_procs * sizeof(dsm_proc_t));
 		
@@ -249,21 +249,14 @@ int main(int argc, char ** argv)
 				for (j = 2; j < argc; j++)
 					newargv[j+1] = string_copy(argv[j]);
 
-				// 5- le nom des machines
-				for (j = 0; j < num_procs; j++)
-					newargv[j+argc+1] = string_copy(machines[j]);
+				// 5- port de dsmexec
+				newargv[argc+1] = int_copy(port);
 
-				// 6- port de dsmexec
-				newargv[argc+num_procs+1] = int_copy(port);
+				// 6- ip courante
+				newargv[argc+2] = string_copy(hostname);
 
-				// 7- ip courante
-				newargv[argc+num_procs+2] = string_copy(hostname);
-
-				// 8- num_procs
-				newargv[argc+num_procs+3] = int_copy(num_procs);
-
-				// 9- NULL
-				newargv[argc+num_procs+4] = NULL;
+				// 7- NULL
+				newargv[argc+3] = NULL;
 
 				// jump to new prog :
 				execvp(newargv[0], newargv);
@@ -339,7 +332,7 @@ int main(int argc, char ** argv)
 		free(thr2);
 		for (i = 0; i < num_procs; i++)
 			free(machines[i]);
-		for (i = 0; i < argc+num_procs+4; i++)
+		for (i = 0; i < argc+3; i++)
 			free(newargv[i]);
 		free(client_fd);
 		free(newargv);

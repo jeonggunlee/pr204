@@ -1,4 +1,4 @@
-/*#include <stdio.h>
+#include <stdio.h>
 #include <sys/types.h>
 #include <unistd.h>
 #include <sys/stat.h>
@@ -30,12 +30,12 @@ int main(int argc, char *argv[])
 	fflush(stderr);
 	return 0;
 }
-*/
 
+/*
 #include <stdio.h>
 
 int main(int argc, char ** argv)
 {
 	fprintf(stdout, "Hello World!\n");
 	return 0;
-}
+}*/

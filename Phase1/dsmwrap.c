@@ -10,25 +10,18 @@ int main(int argc, char ** argv)
 
 	memset(buf, '\0', LENGTH);
 
-	// recuperation du nombre de processus
-	int num_procs = atoi(argv[argc-1]);
 	// recuperation du port de dsmexec
-	int port_dsmexec = atoi(argv[argc-3]);
+	int port_dsmexec = atoi(argv[argc-2]);
 
 	// recuperation de l'adresse ip de dsmexec
-	char * hostname_dsmexec = string_copy(argv[argc-2]);
-	char * machines[num_procs];
+	char * hostname_dsmexec = string_copy(argv[argc-1]);
 
-	char ** newargv = malloc((argc-num_procs-3) * sizeof(char *));
+	char ** newargv = malloc((argc-3) * sizeof(char *));
 
-	// recuperation du nom des machines
-	for (i = 0; i < num_procs; i++)
-		machines[i] = string_copy(argv[argc-3-num_procs+i]);
-
-	for (i = 0; i < argc-num_procs-3-1; i++)
+	for (i = 0; i < argc-3; i++)
 		newargv[i] = string_copy(argv[i+1]);
 	
-	newargv[argc-num_procs-3] = NULL;
+	newargv[argc-3] = NULL;
 
 	// creation d'une socket pour se connecter au
 	// au lanceur et envoyer/recevoir les infos
