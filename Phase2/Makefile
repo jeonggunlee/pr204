@@ -7,17 +7,25 @@ OPTFLAGS     = -O0
 
 SHELL = /bin/sh
 
-CFLAGS  =   -DREENTRANT
+CFLAGS  =   -DREENTRANT -Wunused -Wall -g
 CCFLAGS = $(CFLAGS)
-LIBS =  -lpthread
+LIBS =  -lpthread -lm
 
-EXECS = exemple
+EXECS = exemple common.o dsmexec dsmwrap truc
 
 default: $(EXECS)
 
+dsmexec: dsmexec.o common.o
+	$(CLINKER) $(OPTFLAGS) -o dsmexec dsmexec.o  common.o $(LIBS)
+	
+dsmwrap: dsmwrap.o common.o
+	$(CLINKER) $(OPTFLAGS) -o dsmwrap dsmwrap.o  common.o $(LIBS)
 
-exemple: exemple.o dsm.o 
-	$(CLINKER) $(OPTFLAGS) -o exemple exemple.o dsm.o  $(LIBS)
+exemple: exemple.o dsm.o common.o
+	$(CLINKER) $(OPTFLAGS) -o exemple exemple.o dsm.o common.o $(LIBS)
+
+truc: truc.o
+	$(CLINKER) $(OPTFLAGS) -o truc truc.o common.o $(LIBS)	
 
 clean:
 	@-/bin/rm -f *.o *~ PI* $(EXECS) *.out core  

@@ -1,4 +1,3 @@
-#include <semaphore.h>
 #include "common_impl.h"
 
 // variables globales
@@ -17,17 +16,8 @@ void usage(void)
 	exit(EXIT_FAILURE);
 }
 
-void sigchld_handler(int sig)
-{
-	pid_t pid;
-
-	while ((pid = waitpid(-1, NULL, WNOHANG)) != -1)
-	{
-		if (pid > 0)
-			num_procs_creat--;
-		sleep(1);
-	}
-}
+// traitant de signal pour sigchld
+void sigchld_handler(int sig) {}
 
 ssize_t count_lines(const char * filename, int * num_procs)
 {
@@ -111,6 +101,7 @@ void * display(void * arguments)
 
 	proc_args_t * args = arguments;
 	fd = args->fd;
+
 	type = args->type;
 	machine = args->machine;
 	rank = args->rank;
@@ -154,7 +145,6 @@ int main(int argc, char ** argv)
 		int (*fd1)[2];
 		int (*fd2)[2];
 		int port;
-		int * client_fd;
 		ssize_t size;
 
 		char ** machines;
@@ -196,8 +186,7 @@ int main(int argc, char ** argv)
 		// allocation des memoires
 		fd1 = malloc(2 * num_procs * sizeof(int));
 		fd2 = malloc(2 * num_procs * sizeof(int));
-		newargv = malloc((argc+3) * sizeof(char *));
-		client_fd = malloc(num_procs * sizeof(int));
+		newargv = malloc((argc+4) * sizeof(char *));
 		proc_array = malloc(num_procs * sizeof(dsm_proc_t));
 		
 		// creation des fils
@@ -255,8 +244,11 @@ int main(int argc, char ** argv)
 				// 6- ip courante
 				newargv[argc+2] = string_copy(hostname);
 
-				// 7- NULL
-				newargv[argc+3] = NULL;
+				// 7- rang
+				newargv[argc+3] = int_copy(i);
+
+				// 8- NULL
+				newargv[argc+4] = NULL;
 
 				// jump to new prog :
 				execvp(newargv[0], newargv);
@@ -279,33 +271,62 @@ int main(int argc, char ** argv)
 		for (i = 0; i < num_procs; i++)
 		{	
 			// on accepte les connexions des processus dsm
-			client_fd[i] = do_accept(fd, (struct sockaddr *)&client_addr, &client_size);
+			proc_array[i].connect_info.fd = do_accept(fd, (struct sockaddr *)&client_addr, &client_size);
 
 			// On recupere le nom de la machine distante
-			receive(client_fd[i], buf);
+			receive(proc_array[i].connect_info.fd, buf);
 			proc_array[i].connect_info.hostname = string_copy(buf);
 			
 			// On recupere le pid du processus distant
-			receive(client_fd[i], buf);
-			proc_array[i].pid = atoi(string_copy(buf));
+			receive(proc_array[i].connect_info.fd, buf);
+			proc_array[i].pid = atoi(buf);
 
 			// On recupere le numero de port de la socket
 			// d'ecoute des processus distants
-			receive(client_fd[i], buf);
-			proc_array[i].connect_info.port = atoi(string_copy(buf));
+			receive(proc_array[i].connect_info.fd, buf);
+			proc_array[i].connect_info.port = atoi(buf);
+
+			// Synchronisation des index
+			receive(proc_array[i].connect_info.fd, buf);
+			proc_array[i].index = atoi(buf);
 
 			proc_array[i].connect_info.rank = i;
 
-			fprintf(stdout, "(%d/%d) Connexion avec %s réussie sur le port %d (PID distant : %d)\n", i+1, num_procs, proc_array[i].connect_info.hostname, proc_array[i].connect_info.port, proc_array[i].pid);
+			fprintf(stdout, "(%d/%d) Connexion avec %s réussie (Port : %d - PID distant : %d)\n", i+1, num_procs, proc_array[i].connect_info.hostname, proc_array[i].connect_info.port, proc_array[i].pid);
 			fflush(stdout);
-
 		}
 		
 		// envoi du nombre de processus aux processus dsm
-		
+		for (i = 0; i < num_procs; i++)
+		{
+			int_in_buf(num_procs, buf);
+			handle_client_message(proc_array[i].connect_info.fd, buf);
+		}
+
 		// envoi des rangs aux processus dsm
+		for (i = 0; i < num_procs; i++)
+		{
+			int_in_buf(proc_array[i].connect_info.rank, buf);
+			handle_client_message(proc_array[i].connect_info.fd, buf);
+		}
 		
 		// envoi des infos de connexion aux processus
+		for (i = 0; i < num_procs; i++)
+		{
+			for (j = 0; j < num_procs; j++)
+			{
+				if (i == j)
+					continue;
+
+				// envoi le nom des machines
+				string_in_buf(proc_array[j].connect_info.hostname, buf);
+				handle_client_message(proc_array[i].connect_info.fd, buf);
+
+				// numero de port
+				int_in_buf(proc_array[j].connect_info.port, buf);
+				handle_client_message(proc_array[i].connect_info.fd, buf);
+			}
+		}
 
 		fprintf(stdout, "\n====================================\n");
 		fprintf(stdout, "       Journal des événements\n");
@@ -322,8 +343,8 @@ int main(int argc, char ** argv)
 			// je recupere les infos sur les tubes de redirection
 			// jusqu'à ce qu'ils soient inactifs (ie fermes par les
 			// processus dsm ecrivains de l'autre cote ...)
-			pthread_create(thr1+i, NULL, display, arguments(fd1[i][0], "stdout", proc_array+i));
-			pthread_create(thr2+i, NULL, display, arguments(fd2[i][0], "stderr", proc_array+i));
+			pthread_create(thr1+i, NULL, display, arguments(fd1[proc_array[i].index][0], "stdout", proc_array+i));
+			pthread_create(thr2+i, NULL, display, arguments(fd2[proc_array[i].index][0], "stderr", proc_array+i));
 		}
 
 		for (i = 0; i < num_procs; i++)
@@ -336,7 +357,7 @@ int main(int argc, char ** argv)
 		while(wait(NULL) > 0);
 		
 		// on ferme les descripteurs proprement
-		
+
 		// on ferme la socket d'ecoute
 		close(fd);
 
@@ -346,10 +367,10 @@ int main(int argc, char ** argv)
 		free(thr2);
 		for (i = 0; i < argc+3; i++)
 			free(newargv[i]);
-		free(client_fd);
 		free(newargv);
 		free(fd1);
 		free(fd2);
 	}
+
 	exit(EXIT_SUCCESS);
 }
