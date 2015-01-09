@@ -18,7 +18,7 @@
 
 /* autres includes (eventuellement) */
 #define LENGTH			1024
-#define DSMWRAP_PATH	"~/PR204/Phase2/dsmwrap"
+#define DSMWRAP_PATH	"$PR204/dsmwrap"
 #define ERROR_EXIT(str)	{perror(str);exit(EXIT_FAILURE);}
 
 /* definition du type des infos */

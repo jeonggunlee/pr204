@@ -1,5 +1,5 @@
-#include "dsm.h"
 #include "common_impl.h"
+#include "dsm.h"
 
 int DSM_NODE_NUM; // nombre de processus dsm
 int DSM_NODE_ID;  // rang (= numero) du processus
@@ -126,6 +126,7 @@ void * do_connect_thread(void * args)
 	int i;
 
 	struct sockaddr_in * sockaddr = malloc((DSM_NODE_NUM-1) * sizeof(struct sockaddr_in));
+
 	// pour s'assurer que connect soit effectue apres accept
 	sleep(1);
 
@@ -147,7 +148,7 @@ void * do_accept_thread(void * args)
 	struct sockaddr_in * client_addr;
 	socklen_t client_size = sizeof(struct sockaddr_in);
 
-	client_addr = malloc((DSM_NODE_NUM-1) * sizeof(struct sockaddr_in));		// FREE !!!
+	client_addr = malloc((DSM_NODE_NUM-1) * sizeof(struct sockaddr_in));
 
 	for (i = 0; i < DSM_NODE_NUM-1; i++)
 	{
@@ -221,7 +222,7 @@ char * dsm_init(int argc, char ** argv)
 	}
    
 	// mise en place du traitant de SIGSEGV
-	act.sa_flags = SA_SIGINFO;
+	act.sa_flags = SA_SIGINFO; 
 	act.sa_sigaction = segv_handler;
 	sigaction(SIGSEGV, &act, NULL);
    
@@ -234,7 +235,7 @@ char * dsm_init(int argc, char ** argv)
 	return ((char *)BASE_ADDR);
 }
 
-void dsm_finalize() 
+void dsm_finalize()
 {
 	int i;
 
@@ -251,7 +252,4 @@ void dsm_finalize()
 	free(proc_array);
 	free(fd_client);
 	free(fd_connect);
-   
-	return;
 }
-

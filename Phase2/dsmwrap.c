@@ -75,7 +75,9 @@ int main(int argc, char ** argv)
 	int_in_buf(index, buf);
 	handle_client_message(fd, buf);
 
-	sleep(1);
+	// Synchronisation avec le pere
+	receive(fd, buf);
+	memset(buf, '\0', LENGTH);
 
 	// on execute la bonne commande
 	execvp(newargv[0], newargv);

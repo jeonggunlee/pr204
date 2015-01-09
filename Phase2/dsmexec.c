@@ -23,22 +23,22 @@ ssize_t count_lines(const char * filename, int * num_procs)
 {
 	int fd;
 	ssize_t size = 0;
-	char c[2];
+	char c[1];
 
-	memset(c, 0, 2);
+	memset(c, 0, 1);
 
 	fd = open(filename, O_RDONLY);
 
 	if (fd != -1)
 	{
-		while (read(fd, c+1, 1) > 0)
+		while (read(fd, c, 1) > 0)
 		{
-			if (c[1] == '\n')
+			if (c[0] == '\n')
 				(*num_procs)++;
 			size++;
 		}
 
-		if (c[1] != '\n')
+		if (c[0] != '\n')
 			(*num_procs)++;
 	}
 	else
@@ -295,7 +295,33 @@ int main(int argc, char ** argv)
 			fprintf(stdout, "(%d/%d) Connexion avec %s réussie (Port : %d - PID distant : %d)\n", i+1, num_procs, proc_array[i].connect_info.hostname, proc_array[i].connect_info.port, proc_array[i].pid);
 			fflush(stdout);
 		}
-		
+
+		fprintf(stdout, "\n====================================\n");
+		fprintf(stdout, "       Journal des événements\n");
+		fprintf(stdout, "====================================\n");
+		fflush(stdout);
+
+		// gestion des E/S : on recupere les caracteres
+		// sur les tubes de redirection de stdout/stderr
+		thr1 = malloc(num_procs * sizeof(pthread_t));
+		thr2 = malloc(num_procs * sizeof(pthread_t));
+
+		for (i = 0; i < num_procs; i++)
+		{
+			// je recupere les infos sur les tubes de redirection
+			// jusqu'à ce qu'ils soient inactifs (ie fermes par les
+			// processus dsm ecrivains de l'autre cote ...)
+			pthread_create(thr1+i, NULL, display, arguments(fd1[proc_array[i].index][0], "stdout", proc_array+i));
+			pthread_create(thr2+i, NULL, display, arguments(fd2[proc_array[i].index][0], "stderr", proc_array+i));
+		}
+
+		// synchronisation avec les fils
+		for (i = 0; i < num_procs; i++)
+		{
+			string_in_buf("Tout est OK.", buf);
+			handle_client_message(proc_array[i].connect_info.fd, buf);
+		}
+
 		// envoi du nombre de processus aux processus dsm
 		for (i = 0; i < num_procs; i++)
 		{
@@ -326,25 +352,6 @@ int main(int argc, char ** argv)
 				int_in_buf(proc_array[j].connect_info.port, buf);
 				handle_client_message(proc_array[i].connect_info.fd, buf);
 			}
-		}
-
-		fprintf(stdout, "\n====================================\n");
-		fprintf(stdout, "       Journal des événements\n");
-		fprintf(stdout, "====================================\n");
-		fflush(stdout);
-
-		// gestion des E/S : on recupere les caracteres
-		// sur les tubes de redirection de stdout/stderr
-		thr1 = malloc(num_procs * sizeof(pthread_t));
-		thr2 = malloc(num_procs * sizeof(pthread_t));
-
-		for (i = 0; i < num_procs; i++)
-		{
-			// je recupere les infos sur les tubes de redirection
-			// jusqu'à ce qu'ils soient inactifs (ie fermes par les
-			// processus dsm ecrivains de l'autre cote ...)
-			pthread_create(thr1+i, NULL, display, arguments(fd1[proc_array[i].index][0], "stdout", proc_array+i));
-			pthread_create(thr2+i, NULL, display, arguments(fd2[proc_array[i].index][0], "stderr", proc_array+i));
 		}
 
 		for (i = 0; i < num_procs; i++)
